@@ -1603,7 +1603,7 @@ footer {
               ASCEND CUP Season I. Confirmo que todos os dados informados são verídicos.</label>
             </div>
 
-            <button class="btn-submit" onclick="submitForm()">Confirmar Inscrição →</button>
+            <button class="btn-submit" id="btnSubmit" onclick="submitForm()">Confirmar Inscrição →</button>
           </div><!-- /form-inner -->
 
           <!-- SUCCESS -->
@@ -1664,12 +1664,22 @@ footer {
 ──────────────────────────────────────────────────────────── */
 const HENRIK_API_KEY = "HDEV-bdda20a3-c3b4-47f1-826f-62acdacd3cc4";   // <── COLE SUA KEY AQUI
 
-/* ─── SEEDS ─── */
-const SEEDS = [
-
-];
-let registered = [...SEEDS];
+/* ─── DADOS (agora vindos do MongoDB via Netlify Function) ─── */
+let registered = [];
 const TOTAL = 64;
+const API_URL = '/.netlify/functions/inscricoes';
+
+async function loadRegistrations() {
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    registered = data.participants || [];
+  } catch (e) {
+    console.warn('⚠ Não foi possível carregar as inscrições do servidor:', e);
+  }
+  updateCounters();
+  renderParticipants();
+}
 
 const RANK_ICONS = {
   Unranked:'🎮', Iron:'🩶', Bronze:'🥉', Silver:'🥈', Gold:'🥇',
@@ -1798,14 +1808,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ─── SUBMIT ─── */
-function genCode() {
-  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = 'VC-';
-  for (let i = 0; i < 8; i++) s += c[Math.floor(Math.random() * c.length)];
-  return s;
-}
-
-function submitForm() {
+async function submitForm() {
   const name    = document.getElementById('fName').value.trim();
   const email   = document.getElementById('fEmail').value.trim();
   const riot    = document.getElementById('fRiot').value.trim();
@@ -1825,9 +1828,31 @@ function submitForm() {
     alert('⚠  Você precisa aceitar o regulamento para prosseguir.'); return;
   }
 
-  const nick = riot.includes('#') ? riot.split('#')[0] : riot;
-  const code = genCode();
-  registered.push({ nick, rank, agent, code });
+  const btn = document.getElementById('btnSubmit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
+  // ── SALVA A INSCRIÇÃO NO MONGODB (via Netlify Function) ──────────
+  let result;
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, riot, discord, rank, agent, age })
+    });
+    result = await res.json();
+    if (!res.ok) {
+      alert('⚠  ' + (result.error || 'Não foi possível concluir a inscrição.'));
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Inscrição →'; }
+      return;
+    }
+  } catch (e) {
+    alert('⚠  Falha na conexão com o servidor. Verifique sua internet e tente novamente.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Inscrição →'; }
+    return;
+  }
+
+  const code = result.code;
+  registered.push({ nick: result.nick, rank: result.rank, agent: result.agent, code });
   updateCounters();
   renderParticipants();
 
@@ -1868,6 +1893,7 @@ function submitForm() {
   document.getElementById('formInner').style.display = 'none';
   document.getElementById('sCode').textContent = code;
   document.getElementById('successPanel').classList.add('show');
+  if (btn) { btn.disabled = false; btn.textContent = 'Confirmar Inscrição →'; }
 }
 
 /* ─── RENDER PARTICIPANTS ─── */
@@ -1975,7 +2001,7 @@ function renderParticipants() {
 
 /* ─── INIT ─── */
 show('hero');
-updateCounters();
+loadRegistrations();
 </script>
 </body>
 </html>
